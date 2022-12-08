@@ -1,0 +1,91 @@
+---
+title: "Untitled"
+output:
+  flexdashboard::flex_dashboard:
+    theme: 
+      version: 4
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(flexdashboard)
+library(shiny)
+library(DBI)
+library(tidyverse)
+library(sqlparseR)
+library(shinyalert)
+
+con <- dbConnect(RPostgres::Postgres(),host = 'concerto.cfaw7z5r1wcw.us-east-1.redshift.amazonaws.com',
+                 port = '5439',
+                 user = Sys.getenv('username'),
+                 password = Sys.getenv('pwd'),
+                 dbname = 'concerto_dev',
+                 sslmode='require')
+
+```
+
+```{r inputs}
+products <- dbGetQuery(con,'select distinct delivery_product from sds.sds_delivery_counts_202209 order by delivery_product desc')
+indications <- dbGetQuery(con,'select distinct indication from sds.sds_delivery_counts_202209 order by indication asc')
+
+selectizeInput("product", "Select product",
+                       choices = products, selected = 'PT360')
+
+renderUI({selectInput("indication", label = "Select indication",
+        choices = prod_spec_indications())})
+
+prod_spec_indications = reactive({
+  prod_indications <- dbGetQuery(con,paste0("select distinct indication from sds.sds_delivery_counts_202209 where delivery_product ilike '", input$product, "' order by indication asc"))
+})
+
+textAreaInput("question", h3("Question"), width = "500px", height = "200px")
+
+textAreaInput("answer", h3("Soution"), width = "500px", height = "200px")
+
+textAreaInput("code", h3("Code snippet (optional)"), width = "500px", height = "200px")
+
+updated_dt <- Sys.Date()
+
+actionButton("submit", "Submit FAQ")
+
+
+observeEvent(input$submit, {
+  qry <- paste0(
+    'INSERT INTO sds.sds_faq VALUES (',
+    "'", input$product, "',",
+    "'", input$indication, "',",
+    "'", cat(input$question), "',",#gsub to double quotes then gsub back to single
+    "'", cat(input$answer), "',",
+    "'", gsub("'", "\\'", gsub("[\r\n]", " ", input$code), fixed = TRUE), "',",
+    "'", updated_dt, "')")
+
+   
+  shinyalert("Success!", "Your FAQ has been submitted", type = "success")
+  dbGetQuery(con,qry)
+  
+    updateTextAreaInput(inputId = 'question', value='')
+    updateTextAreaInput(inputId = 'answer', value='')
+    updateTextAreaInput(inputId = 'code', value='')
+})
+
+# example_SQL <- "SELECT chai_patient_id, met_date FROM ((SELECT chai_patient_id, curation_indicator, stage_date AS met_date FROM staging WHERE LOWER(stage_group_name) LIKE 'stage 4%' OR LOWER(mstage_name) LIKE '%m1%') UNION (SELECT chai_patient_id, curation_indicator, diagnosis_date AS met_date FROM condition WHERE LOWER(diagnosis_type_name) ILIKE 'metastatic%')
+# ) met WHERE met_date IS NOT NULL AND curation_indicator = 1;"
+
+#sqlparseR::sql_format(example_SQL, reindent = TRUE) %>% cat()
+
+
+#question <- "Hi I'm Ben and I'm smart"
+#cat(str_replace_all(question, "'", "\""))
+
+#[] Add tab for editing existing records
+#[] Change to Conrad's delivery contracts
+#[] fix quotes not working
+#[] weird null at the bottom
+#[] make interface pretty and organized
+#[] how to scale without 1000 identical files
+#[] enter FAQs 
+```
+
+

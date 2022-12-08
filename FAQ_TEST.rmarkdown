@@ -1,0 +1,54 @@
+---
+title: "PT360 Breast FAQ"
+subtitle: "Last Updated November 7, 2022"
+format:
+  html:
+    toc: true
+    self-contained: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(DBI)
+library(tidyverse)
+library(sqlparseR)
+library(RSqlParser)
+install_sqlparse_py()
+
+con <- dbConnect(RPostgres::Postgres(),host = 'concerto.cfaw7z5r1wcw.us-east-1.redshift.amazonaws.com',
+                 port = '5439',
+                 user = Sys.getenv('username'),
+                 password = Sys.getenv('pwd'),
+                 dbname = 'concerto_dev',
+                 sslmode='require')
+```
+
+```{r, include = FALSE}
+getFAQs <- function(product, indication) {
+  dbGetQuery(con,paste0("select * from sds.sds_faq where product = '", product, "' and indication = '", indication, "'"))
+}
+
+#markdownotize('GN360', 'Bladder')$question[1]
+
+
+sql_format <- function(code) {
+  sqlparseR::sql_format(gsub('  ', '',gsub('\"', '\'',gsub("[\r\n]", " ", code), fixed = TRUE)), reindent = TRUE)
+  #gsub('  ', '',gsub('\"', '\'',gsub("[\r\n]", " ", code), fixed = TRUE))
+}
+#sql_format(markdownotize('GN360', 'Bladder')$code[1])
+
+markdownotize <- function(faq_row) {
+  cat('## ', faq_row[3], " \n")
+  cat('### ', faq_row[4], " \n")
+  cat('``` sql', "\n", sql_format(faq_row[5]), "\n", ' ```', "\n")
+  cat('<sub><sup> ', 'Updated on ', as.character(faq_row[6]), ' ', '<sub><sup>', "\n")
+  cat("\n")
+}
+
+```
+
+```{r, results='asis'}
+apply(getFAQs('GN360', 'Bladder'), 1, markdownotize)
+```
+
